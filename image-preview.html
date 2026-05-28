@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>多图 URL 预览工具</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 2px 12px rgba(102,126,234,.35);
+    }
+    header svg { flex-shrink: 0; }
+    header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: .5px; }
+    header p  { font-size: .85rem; opacity: .85; margin-top: 2px; }
+
+    /* ── Main layout ── */
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 28px 24px;
+    }
+
+    /* ── Input panel ── */
+    .input-panel {
+      background: #fff;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 2px 16px rgba(0,0,0,.07);
+      margin-bottom: 24px;
+    }
+    .input-panel label {
+      display: block;
+      font-size: .9rem;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 10px;
+    }
+    textarea {
+      width: 100%;
+      height: 130px;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: .9rem;
+      line-height: 1.6;
+      resize: vertical;
+      transition: border-color .2s;
+      outline: none;
+      color: #333;
+    }
+    textarea:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,.15); }
+    textarea::placeholder { color: #bbb; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: .875rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all .18s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+      box-shadow: 0 3px 10px rgba(102,126,234,.4);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(102,126,234,.5); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #555;
+      border: 1.5px solid #e0e0e0;
+    }
+    .btn-secondary:hover { background: #ececec; }
+
+    /* column selector */
+    .col-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      font-size: .85rem;
+      color: #666;
+    }
+    .col-selector select {
+      border: 1.5px solid #e0e0e0;
+      border-radius: 7px;
+      padding: 6px 10px;
+      font-size: .85rem;
+      cursor: pointer;
+      outline: none;
+      background: #fff;
+    }
+    .col-selector select:focus { border-color: #667eea; }
+
+    /* ── Stats bar ── */
+    .stats-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+      font-size: .85rem;
+      color: #888;
+    }
+    .stats-bar .badge {
+      background: #667eea;
+      color: #fff;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: .8rem;
+      font-weight: 600;
+    }
+    .stats-bar .badge.error { background: #f56565; }
+
+    /* ── Grid ── */
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(var(--cols, 3), 1fr);
+    }
+
+    /* ── Card ── */
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,.07);
+      transition: transform .2s, box-shadow .2s;
+      display: flex;
+      flex-direction: column;
+    }
+    .card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+
+    .card-img-wrap {
+      position: relative;
+      background: #f7f7f7;
+      overflow: hidden;
+      cursor: zoom-in;
+    }
+    .card-img-wrap img {
+      width: 100%;
+      display: block;
+      object-fit: contain;
+      max-height: 260px;
+      transition: transform .3s;
+    }
+    .card-img-wrap:hover img { transform: scale(1.03); }
+
+    /* loading / error overlay */
+    .card-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: .8rem;
+      color: #999;
+    }
+    .card-overlay.loading { background: #f7f7f7; }
+    .card-overlay.error   { background: #fff5f5; color: #e53e3e; }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid #e0e0e0;
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* card footer */
+    .card-footer {
+      padding: 10px 12px;
+      border-top: 1px solid #f0f0f0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-index {
+      background: #667eea;
+      color: #fff;
+      border-radius: 6px;
+      padding: 1px 7px;
+      font-size: .75rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .card-url {
+      font-size: .75rem;
+      color: #888;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .card-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .icon-btn {
+      width: 28px; height: 28px;
+      border: none;
+      background: #f5f5f5;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .15s;
+      color: #666;
+    }
+    .icon-btn:hover { background: #e8e8e8; color: #333; }
+
+    /* ── Lightbox ── */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.85);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .lightbox.open { display: flex; }
+    .lightbox img {
+      max-width: 90vw;
+      max-height: 80vh;
+      border-radius: 10px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.6);
+      object-fit: contain;
+    }
+    .lightbox-close {
+      position: absolute;
+      top: 20px; right: 24px;
+      background: rgba(255,255,255,.15);
+      border: none;
+      color: #fff;
+      font-size: 1.5rem;
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .lightbox-close:hover { background: rgba(255,255,255,.3); }
+    .lightbox-nav {
+      display: flex;
+      gap: 12px;
+    }
+    .lightbox-nav button {
+      background: rgba(255,255,255,.15);
+      border: none;
+      color: #fff;
+      padding: 8px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: .9rem;
+      transition: background .15s;
+    }
+    .lightbox-nav button:hover { background: rgba(255,255,255,.3); }
+    .lightbox-counter {
+      color: rgba(255,255,255,.7);
+      font-size: .85rem;
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #bbb;
+    }
+    .empty-state svg { margin-bottom: 16px; opacity: .4; }
+    .empty-state p { font-size: 1rem; }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: repeat(2, 1fr) !important; }
+    }
+    @media (max-width: 560px) {
+      .grid { grid-template-columns: 1fr !important; }
+      .col-selector { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+    <polyline points="21 15 16 10 5 21"/>
+  </svg>
+  <div>
+    <h1>多图 URL 预览工具</h1>
+    <p>批量输入图片链接，即时预览、放大、复制</p>
+  </div>
+</header>
+
+<main>
+  <!-- Input panel -->
+  <div class="input-panel">
+    <label for="urlInput">图片 URL 列表（每行一个，或直接粘贴 JSON 数组）</label>
+    <textarea id="urlInput" placeholder='每行一个 URL：&#10;https://example.com/image1.jpg&#10;https://example.com/image2.png&#10;&#10;或 JSON 数组格式：&#10;["https://example.com/image1.jpg","https://example.com/image2.png"]' onpaste="onPasteAuto(event)"></textarea>
+    <div class="toolbar">
+      <button class="btn btn-primary" onclick="loadImages()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        预览图片
+      </button>
+      <button class="btn btn-secondary" onclick="clearAll()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+        清空
+      </button>
+      <button class="btn btn-secondary" onclick="loadSample()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        示例数据
+      </button>
+      <div class="col-selector">
+        <span>列数</span>
+        <select id="colSelect" onchange="updateCols()">
+          <option value="1">1 列</option>
+          <option value="2">2 列</option>
+          <option value="3" selected>3 列</option>
+          <option value="4">4 列</option>
+          <option value="5">5 列</option>
+          <option value="6">6 列</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar" id="statsBar" style="display:none">
+    <span>共 <span class="badge" id="totalBadge">0</span> 张</span>
+    <span id="errorInfo" style="display:none">加载失败 <span class="badge error" id="errorBadge">0</span> 张</span>
+  </div>
+
+  <!-- Grid -->
+  <div class="grid" id="grid" style="--cols:3"></div>
+
+  <!-- Empty state -->
+  <div class="empty-state" id="emptyState">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+      <polyline points="21 15 16 10 5 21"/>
+    </svg>
+    <p>在上方输入图片 URL，点击「预览图片」开始</p>
+  </div>
+</main>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightboxOnBg(event)">
+  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightboxImg" src="" alt="预览" />
+  <div class="lightbox-counter" id="lightboxCounter"></div>
+  <div class="lightbox-nav">
+    <button onclick="lightboxPrev()">← 上一张</button>
+    <button onclick="lightboxNext()">下一张 →</button>
+  </div>
+</div>
+
+<script>
+  let urls = [];
+  let errorCount = 0;
+  let lightboxIndex = 0;
+
+  /* ── Sample data ── */
+  const SAMPLES = [
+    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600",
+    "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=600",
+    "https://images.unsplash.com/photo-1501854140801-50d01698950b?w=600",
+    "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=600",
+    "https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?w=600",
+    "https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=600",
+  ];
+
+  function loadSample() {
+    document.getElementById("urlInput").value = SAMPLES.join("\n");
+    loadImages();
+  }
+
+  /* 粘贴后自动识别并预览 */
+  function onPasteAuto(e) {
+    const text = (e.clipboardData || window.clipboardData).getData("text");
+    const trimmed = text.trim();
+    // 只有粘贴内容看起来像 JSON 数组或多行 URL 时才自动触发
+    const isJsonArray = trimmed.startsWith("[") && trimmed.endsWith("]");
+    const isMultiLine = trimmed.includes("\n") && trimmed.startsWith("http");
+    if (isJsonArray || isMultiLine) {
+      e.preventDefault();
+      document.getElementById("urlInput").value = trimmed;
+      // 短暂延迟让 UI 更新后再渲染
+      setTimeout(loadImages, 50);
+    }
+  }
+
+  /* ── Parse & render ── */
+  function parseUrls(raw) {
+    const trimmed = raw.trim();
+    // JSON 数组格式：["url1","url2",...]
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map(s => String(s).trim()).filter(s => s.length > 0);
+        }
+      } catch(e) { /* fall through to line-by-line */ }
+    }
+    // 逐行格式（兼容逗号分隔、引号包裹）
+    return trimmed.split(/[\n,]+/)
+      .map(s => s.trim().replace(/^["']|["']$/g, "").trim())
+      .filter(s => s.startsWith("http"));
+  }
+
+  function loadImages() {
+    const raw = document.getElementById("urlInput").value;
+    urls = parseUrls(raw);
+
+    errorCount = 0;
+    const grid = document.getElementById("grid");
+    grid.innerHTML = "";
+
+    const empty = document.getElementById("emptyState");
+    const stats = document.getElementById("statsBar");
+
+    if (urls.length === 0) {
+      empty.style.display = "block";
+      stats.style.display = "none";
+      return;
+    }
+
+    empty.style.display = "none";
+    stats.style.display = "flex";
+    document.getElementById("totalBadge").textContent = urls.length;
+    document.getElementById("errorInfo").style.display = "none";
+    document.getElementById("errorBadge").textContent = "0";
+
+    urls.forEach((url, i) => {
+      grid.appendChild(createCard(url, i));
+    });
+  }
+
+  function createCard(url, index) {
+    const card = document.createElement("div");
+    card.className = "card";
+
+    // image wrap
+    const wrap = document.createElement("div");
+    wrap.className = "card-img-wrap";
+    wrap.onclick = () => openLightbox(index);
+
+    // loading overlay
+    const overlay = document.createElement("div");
+    overlay.className = "card-overlay loading";
+    overlay.innerHTML = `<div class="spinner"></div><span>加载中…</span>`;
+    wrap.appendChild(overlay);
+
+    // img
+    const img = document.createElement("img");
+    img.alt = `图片 ${index + 1}`;
+    img.onload = () => {
+      overlay.remove();
+    };
+    img.onerror = () => {
+      overlay.className = "card-overlay error";
+      overlay.innerHTML = `
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span>加载失败</span>`;
+      errorCount++;
+      document.getElementById("errorBadge").textContent = errorCount;
+      document.getElementById("errorInfo").style.display = "inline-flex";
+    };
+    img.src = url;
+    wrap.appendChild(img);
+    card.appendChild(wrap);
+
+    // footer
+    const footer = document.createElement("div");
+    footer.className = "card-footer";
+    footer.innerHTML = `
+      <span class="card-index">${index + 1}</span>
+      <span class="card-url" title="${escHtml(url)}">${escHtml(url)}</span>
+      <div class="card-actions">
+        <button class="icon-btn" title="复制 URL" onclick="copyUrl(event,'${escAttr(url)}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+        </button>
+        <button class="icon-btn" title="在新标签打开" onclick="openTab(event,'${escAttr(url)}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+        </button>
+      </div>`;
+    card.appendChild(footer);
+    return card;
+  }
+
+  /* ── Lightbox ── */
+  function openLightbox(index) {
+    lightboxIndex = index;
+    showLightboxImage();
+    document.getElementById("lightbox").classList.add("open");
+    document.addEventListener("keydown", lightboxKeyHandler);
+  }
+
+  function showLightboxImage() {
+    document.getElementById("lightboxImg").src = urls[lightboxIndex];
+    document.getElementById("lightboxCounter").textContent =
+      `${lightboxIndex + 1} / ${urls.length}`;
+  }
+
+  function closeLightbox() {
+    document.getElementById("lightbox").classList.remove("open");
+    document.removeEventListener("keydown", lightboxKeyHandler);
+  }
+
+  function closeLightboxOnBg(e) {
+    if (e.target === document.getElementById("lightbox")) closeLightbox();
+  }
+
+  function lightboxPrev() {
+    lightboxIndex = (lightboxIndex - 1 + urls.length) % urls.length;
+    showLightboxImage();
+  }
+
+  function lightboxNext() {
+    lightboxIndex = (lightboxIndex + 1) % urls.length;
+    showLightboxImage();
+  }
+
+  function lightboxKeyHandler(e) {
+    if (e.key === "ArrowLeft")  lightboxPrev();
+    if (e.key === "ArrowRight") lightboxNext();
+    if (e.key === "Escape")     closeLightbox();
+  }
+
+  /* ── Helpers ── */
+  function updateCols() {
+    const v = document.getElementById("colSelect").value;
+    document.getElementById("grid").style.setProperty("--cols", v);
+  }
+
+  function clearAll() {
+    document.getElementById("urlInput").value = "";
+    document.getElementById("grid").innerHTML = "";
+    document.getElementById("emptyState").style.display = "block";
+    document.getElementById("statsBar").style.display = "none";
+    urls = [];
+  }
+
+  function copyUrl(e, url) {
+    e.stopPropagation();
+    navigator.clipboard.writeText(url).then(() => {
+      const btn = e.currentTarget;
+      btn.style.background = "#c6f6d5";
+      setTimeout(() => btn.style.background = "", 1000);
+    });
+  }
+
+  function openTab(e, url) {
+    e.stopPropagation();
+    window.open(url, "_blank");
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+  function escAttr(s) {
+    return s.replace(/'/g,"\\'").replace(/"/g,"&quot;");
+  }
+</script>
+</body>
+</html>
