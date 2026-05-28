@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://2108038773.github.io/image-preview/sitemap.xml
